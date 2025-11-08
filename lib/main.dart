@@ -16,9 +16,9 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Hack Social',
-      theme: AppTheme.lightTheme,
+      theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
       home: const MainNavigation(),
     );
   }
@@ -54,21 +54,22 @@ class _MainNavigationState extends State<MainNavigation> {
             _currentIndex = index;
           });
         },
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Feed',
+            icon: Icon(Icons.home_outlined, size: 28),
+            selectedIcon: Icon(Icons.home, size: 28),
+            label: '',
           ),
           NavigationDestination(
-            icon: Icon(Icons.add_circle_outline),
-            selectedIcon: Icon(Icons.add_circle),
-            label: 'Studio',
+            icon: Icon(Icons.add_circle_outline, size: 28),
+            selectedIcon: Icon(Icons.add_circle, size: 28),
+            label: '',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
+            icon: Icon(Icons.person_outline, size: 28),
+            selectedIcon: Icon(Icons.person, size: 28),
+            label: '',
           ),
         ],
       ),

@@ -1,0 +1,28 @@
+[
+  {
+    "id": 0,
+    "assetName": "assets/profile-pictures/test-1.png",
+    "username": "Lustra"
+  },
+  {
+    "id": 1,
+    "assetName": "assets/profile-pictures/test-1.png",
+    "username": "TestUser1"
+  },
+  {
+    "id": 2,
+    "assetName": "assets/profile-pictures/shadow-hunter.png",
+    "username": "DragonSlayer"
+  },
+  {
+    "id": 3,
+    "assetName": "assets/profile-pictures/test-1.png",
+    "username": "MageMaster"
+  },
+  {
+    "id": 4,
+    "assetName": "assets/profile-pictures/shadow-hunter.png",
+    "username": "RogueNinja"
+  }
+]
+
