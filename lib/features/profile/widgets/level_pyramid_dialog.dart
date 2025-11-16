@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/lucky_wrappers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../models/user_profile.dart';
 
 class LevelPyramidDialog extends StatelessWidget {
   final int currentLevel;
@@ -24,46 +26,49 @@ class LevelPyramidDialog extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Levels',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  'You need to reach a certain level to unlock chests of that level. Higher level chests contain better rewards!',
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Levels',
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                    height: 1.4,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-              ),
-              const SizedBox(height: 24),
-              _buildLevel(context, 5, 'Master', currentLevel >= 5),
-              const SizedBox(height: 8),
-              _buildLevel(context, 4, 'Expert', currentLevel >= 4),
-              const SizedBox(height: 8),
-              _buildLevel(context, 3, 'Advanced', currentLevel >= 3),
-              const SizedBox(height: 8),
-              _buildLevel(context, 2, 'Intermediate', currentLevel >= 2),
-              const SizedBox(height: 8),
-              _buildLevel(context, 1, 'Beginner', currentLevel >= 1),
-              const SizedBox(height: 24),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Text(
+                    'You need to reach a certain level to unlock chests of that level. Higher level chests contain better rewards!',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white70,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildLevel(context, 5, 'Master', currentLevel >= 5, currentLevel),
+                const SizedBox(height: 8),
+                _buildLevel(context, 4, 'Expert', currentLevel >= 4, currentLevel),
+                const SizedBox(height: 8),
+                _buildLevel(context, 3, 'Advanced', currentLevel >= 3, currentLevel),
+                const SizedBox(height: 8),
+                _buildLevel(context, 2, 'Intermediate', currentLevel >= 2, currentLevel),
+                const SizedBox(height: 8),
+                _buildLevel(context, 1, 'Beginner', currentLevel >= 1, currentLevel),
+                const SizedBox(height: 24),
+                LuckyButtonWrapper(
+                  text: 'Close',
+                  onPressed: () => Navigator.of(context).pop(),
+                  variant: LuckyButtonVariant.outline,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -75,8 +80,10 @@ class LevelPyramidDialog extends StatelessWidget {
     int level,
     String label,
     bool isUnlocked,
+    int currentLevel,
   ) {
     final isCurrent = currentLevel == level;
+    final expNeeded = UserProfile.getTotalExperienceForLevel(level);
 
     return Container(
       width: double.infinity,
@@ -96,41 +103,56 @@ class LevelPyramidDialog extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset(
-            'assets/chests/level-$level.png',
-            width: 64,
-            height: 64,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return const SizedBox(width: 64, height: 64);
-            },
-          ),
-          const SizedBox(width: 12),
-          Text(
-            'Lv $level',
-            style: TextStyle(
-              color: isUnlocked ? Colors.white : Colors.grey,
-              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isUnlocked ? Colors.white70 : Colors.grey,
-                fontSize: 12,
+          Row(
+            children: [
+              Image.asset(
+                'assets/chests/level-$level.png',
+                width: 48,
+                height: 48,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const SizedBox(width: 48, height: 48);
+                },
               ),
-              overflow: TextOverflow.ellipsis,
+              const SizedBox(width: 12),
+              Text(
+                'Lv $level',
+                style: TextStyle(
+                  color: isUnlocked ? Colors.white : Colors.grey,
+                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: isUnlocked ? Colors.white70 : Colors.grey,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isCurrent) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.star, color: AppTheme.gemGreen, size: 16),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            level == 1 
+                ? 'Starting level'
+                : 'Requires $expNeeded XP',
+            style: TextStyle(
+              color: isUnlocked ? Colors.white70 : Colors.grey,
+              fontSize: 11,
             ),
           ),
-          if (isCurrent) ...[
-            const SizedBox(width: 8),
-            const Icon(Icons.star, color: AppTheme.gemGreen, size: 16),
-          ],
         ],
       ),
     );

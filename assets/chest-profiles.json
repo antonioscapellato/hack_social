@@ -1,28 +1,22 @@
 [
   {
-    "id": 0,
+    "id": 3,
     "assetName": "assets/profile-pictures/test-1.png",
     "username": "Lustra"
   },
   {
-    "id": 1,
-    "assetName": "assets/profile-pictures/test-1.png",
-    "username": "TestUser1"
-  },
-  {
     "id": 2,
-    "assetName": "assets/profile-pictures/shadow-hunter.png",
-    "username": "DragonSlayer"
+    "assetName": "assets/profile-pictures/test-2.png",
+    "username": "Vayla"
   },
   {
-    "id": 3,
-    "assetName": "assets/profile-pictures/test-1.png",
-    "username": "MageMaster"
+    "id": 1,
+    "assetName": "assets/profile-pictures/test-3.png",
+    "username": "Cinder"
   },
   {
-    "id": 4,
-    "assetName": "assets/profile-pictures/shadow-hunter.png",
-    "username": "RogueNinja"
+    "id": 0,
+    "assetName": "assets/profile-pictures/test-4.png",
+    "username": "Nyssa"
   }
 ]
-

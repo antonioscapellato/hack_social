@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'features/feed/feed_screen.dart';
 import 'features/studio/studio_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/studio/services/stripe_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
+import 'core/widgets/lucky_wrappers.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Stripe
+  await StripeService.initialize();
+  
   runApp(const MainApp());
 }
 
@@ -47,28 +54,27 @@ class _MainNavigationState extends State<MainNavigation> {
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
+      bottomNavigationBar: LuckyNavBarWrapper(
+        currentIndex: _currentIndex,
+        onTap: (int index) {
           setState(() {
             _currentIndex = index;
           });
         },
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined, size: 28),
-            selectedIcon: Icon(Icons.home, size: 28),
+        items: [
+          LuckyNavBarItemWrapper(
+            icon: Icons.inventory_2_outlined,
+            selectedIcon: Icons.inventory_2,
             label: '',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.add_circle_outline, size: 28),
-            selectedIcon: Icon(Icons.add_circle, size: 28),
+          LuckyNavBarItemWrapper(
+            icon: Icons.add_circle_outline,
+            selectedIcon: Icons.add_circle,
             label: '',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline, size: 28),
-            selectedIcon: Icon(Icons.person, size: 28),
+          LuckyNavBarItemWrapper(
+            icon: Icons.person_outline,
+            selectedIcon: Icons.person,
             label: '',
           ),
         ],

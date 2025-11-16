@@ -43,5 +43,12 @@ class ChestStorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_chestsKey);
   }
+
+  // Save all chests (useful for reordering)
+  static Future<void> saveAllChests(List<Chest> chests) async {
+    final prefs = await SharedPreferences.getInstance();
+    final chestsJson = chests.map((c) => c.toJson()).toList();
+    await prefs.setString(_chestsKey, jsonEncode(chestsJson));
+  }
 }
 

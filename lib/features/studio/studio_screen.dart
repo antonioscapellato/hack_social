@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/lucky_wrappers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
 import 'models/chest.dart';
 import 'services/chest_storage_service.dart';
+import 'services/chest_reward_service.dart';
+import 'services/stripe_service.dart';
 import '../profile/models/inventory_item.dart';
 import '../profile/models/user_profile.dart';
 import '../profile/utils/item_icons.dart';
@@ -23,9 +26,11 @@ class _StudioScreenState extends State<StudioScreen> {
   
   Map<ItemType, int> _selectedItems = {}; // Map of item type to quantity
   int _selectedLevel = 1;
-  ChestContentType _contentType = ChestContentType.media;
-  XFile? _selectedMedia;
-  bool _isImage = true;
+  bool _hasMedia = true; // Whether media is selected
+  bool _hasMoney = false; // Whether money is selected
+  List<XFile> _selectedMedia = []; // List of selected media files
+  Map<String, bool> _mediaIsImage = {}; // Map of media path to isImage flag
+  Map<String, String> _mediaDescriptions = {}; // Map of media path to description text
   
   // Categories for organizing items
   Map<String, List<ItemType>> get _itemCategories => {
@@ -90,10 +95,11 @@ class _StudioScreenState extends State<StudioScreen> {
         );
       }
       
-      if (media != null) {
+      final selectedMedia = media;
+      if (selectedMedia != null) {
         setState(() {
-          _selectedMedia = media;
-          _isImage = mediaType == 'image';
+          _selectedMedia.add(selectedMedia);
+          _mediaIsImage[selectedMedia.path] = mediaType == 'image';
         });
       }
     } catch (e) {
@@ -105,9 +111,77 @@ class _StudioScreenState extends State<StudioScreen> {
     }
   }
 
+  void _removeMedia(int index) {
+    setState(() {
+      final removedMedia = _selectedMedia.removeAt(index);
+      _mediaIsImage.remove(removedMedia.path);
+      _mediaDescriptions.remove(removedMedia.path);
+    });
+  }
+
+  void _editMediaDescription(int index) {
+    final media = _selectedMedia[index];
+    final currentDescription = _mediaDescriptions[media.path] ?? '';
+    final controller = TextEditingController(text: currentDescription);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.white24, width: 1),
+        ),
+        title: const Text(
+          'Add Description',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          maxLength: 200,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: 'Enter a short description for this media...',
+            hintStyle: const TextStyle(color: Colors.white54),
+            enabledBorder: OutlineInputBorder(
+              borderSide: const BorderSide(color: Colors.white24),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: const BorderSide(color: AppTheme.gemGreen),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.05),
+          ),
+        ),
+        actions: [
+          LuckyButtonWrapper(
+            text: 'Cancel',
+            onPressed: () => Navigator.of(context).pop(),
+            variant: LuckyButtonVariant.outline,
+          ),
+          LuckyButtonWrapper(
+            text: 'Save',
+            onPressed: () {
+              setState(() {
+                final description = controller.text.trim();
+                if (description.isEmpty) {
+                  _mediaDescriptions.remove(media.path);
+                } else {
+                  _mediaDescriptions[media.path] = description;
+                }
+              });
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleStripePayment() async {
-    // For now, we'll just validate the amount and show a placeholder
-    // In a real app, you would integrate with Stripe Payment Sheet here
     final amount = double.tryParse(_moneyAmountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,41 +190,79 @@ class _StudioScreenState extends State<StudioScreen> {
       return;
     }
 
-    // Placeholder for Stripe integration
-    // In production, you would:
-    // 1. Create a payment intent on your backend
-    // 2. Initialize Stripe Payment Sheet
-    // 3. Present the payment sheet
-    // 4. Handle the payment result
-    
+    // Show loading dialog
+    if (!mounted) return;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.black,
-        title: const Text(
-          'Stripe Integration',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Stripe payment integration would be implemented here.\n\n'
-          'Amount: \$${amount.toStringAsFixed(2)}',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // In production, proceed with Stripe payment
-            },
-            child: const Text('Proceed'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
       ),
     );
+
+    try {
+      // Create payment intent
+      final paymentIntent = await StripeService.createPaymentIntent(
+        amount: amount,
+        currency: 'USD',
+      );
+
+      if (paymentIntent == null || !mounted) {
+        if (mounted) {
+          Navigator.pop(context); // Close loading dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to create payment intent. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Present payment sheet
+      final success = await StripeService.presentPaymentSheet(
+        clientSecret: paymentIntent['clientSecret'] as String,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        // Payment successful
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment successful! \$${amount.toStringAsFixed(2)} has been processed.',
+            ),
+            backgroundColor: AppTheme.gemGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        // Payment was canceled or failed
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment was canceled.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _createChest() async {
@@ -170,14 +282,22 @@ class _StudioScreenState extends State<StudioScreen> {
       return;
     }
 
-    if (_contentType == ChestContentType.media && _selectedMedia == null) {
+    // Validate that at least one reward type is selected
+    if (!_hasMedia && !_hasMoney) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an image or video')),
+        const SnackBar(content: Text('Please select at least one reward type (Media or Money)')),
       );
       return;
     }
 
-    if (_contentType == ChestContentType.money) {
+    if (_hasMedia && _selectedMedia.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one image or video')),
+      );
+      return;
+    }
+
+    if (_hasMoney) {
       final amount = double.tryParse(_moneyAmountController.text);
       if (amount == null || amount <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -187,8 +307,20 @@ class _StudioScreenState extends State<StudioScreen> {
       }
     }
 
+    // Determine contentType based on what's selected
+    final ChestContentType contentType;
+    if (_hasMedia && _hasMoney) {
+      contentType = ChestContentType.both;
+    } else if (_hasMedia) {
+      contentType = ChestContentType.media;
+    } else {
+      contentType = ChestContentType.money;
+    }
+
     try {
       final userProfile = UserProfile.getFakeProfile();
+      // Generate rewards based on chest level
+      final rewards = ChestRewardService.generateRewards(_selectedLevel);
       final chest = Chest(
         id: const Uuid().v4(),
         name: _nameController.text.trim(),
@@ -196,12 +328,18 @@ class _StudioScreenState extends State<StudioScreen> {
         creatorProfilePicture: userProfile.profilePicturePath,
         requiredItems: validItems,
         requiredLevel: _selectedLevel,
-        contentType: _contentType,
-        mediaPath: _selectedMedia?.path,
-        moneyAmount: _contentType == ChestContentType.money
+        contentType: contentType,
+        mediaPaths: _hasMedia && _selectedMedia.isNotEmpty
+            ? _selectedMedia.map((m) => m.path).toList()
+            : null,
+        mediaDescriptions: _hasMedia && _mediaDescriptions.isNotEmpty
+            ? Map<String, String>.from(_mediaDescriptions)
+            : null,
+        moneyAmount: _hasMoney
             ? double.parse(_moneyAmountController.text)
             : null,
         createdAt: DateTime.now(),
+        rewards: rewards,
       );
 
       await ChestStorageService.saveChest(chest);
@@ -217,8 +355,11 @@ class _StudioScreenState extends State<StudioScreen> {
         setState(() {
           _selectedItems = {};
           _selectedLevel = 1;
-          _contentType = ChestContentType.media;
-          _selectedMedia = null;
+          _hasMedia = true;
+          _hasMoney = false;
+          _selectedMedia = [];
+          _mediaIsImage = {};
+          _mediaDescriptions = {};
         });
       }
     } catch (e) {
@@ -253,23 +394,9 @@ class _StudioScreenState extends State<StudioScreen> {
                 const SizedBox(height: 32),
                 
                 // Chest Name
-                TextFormField(
+                LuckyTextFieldWrapper(
                   controller: _nameController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Chest Name',
-                    labelStyle: const TextStyle(color: Colors.white70),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.white24),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: AppTheme.gemGreen),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.05),
-                  ),
+                  labelText: 'Chest Name',
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter a chest name';
@@ -370,7 +497,7 @@ class _StudioScreenState extends State<StudioScreen> {
 
                 // Content Type
                 const Text(
-                  'Content Type',
+                  'Rewards',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -381,100 +508,231 @@ class _StudioScreenState extends State<StudioScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: _buildContentTypeOption(
-                        ChestContentType.media,
+                      child: _buildContentTypeToggle(
                         'Media',
                         Icons.image,
+                        _hasMedia,
+                        (value) {
+                          setState(() {
+                            _hasMedia = value;
+                          });
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _buildContentTypeOption(
-                        ChestContentType.money,
+                      child: _buildContentTypeToggle(
                         'Money',
                         Icons.attach_money,
+                        _hasMoney,
+                        (value) {
+                          setState(() {
+                            _hasMoney = value;
+                          });
+                        },
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 24),
 
-                // Media Upload or Money Input
-                if (_contentType == ChestContentType.media) ...[
-                  InkWell(
-                    onTap: _pickMedia,
-                    child: Container(
-                      height: 300,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        border: Border.all(
-                          color: _selectedMedia != null
-                              ? AppTheme.gemGreen
-                              : Colors.white24,
-                          width: 2,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: _selectedMedia != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: _isImage
-                                  ? Image.file(
-                                      File(_selectedMedia!.path),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : const Center(
-                                      child: Icon(
-                                        Icons.video_library,
-                                        size: 80,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                            )
-                          : const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                // Media Upload - Show if media is selected
+                if (_hasMedia) ...[
+                  // Selected Media List
+                  if (_selectedMedia.isNotEmpty) ...[
+                    SizedBox(
+                      height: 250,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _selectedMedia.length,
+                        itemBuilder: (context, index) {
+                          final media = _selectedMedia[index];
+                          final isImage = _mediaIsImage[media.path] ?? false;
+                          final hasDescription = _mediaDescriptions.containsKey(media.path) && 
+                                                 _mediaDescriptions[media.path]!.isNotEmpty;
+                          return Container(
+                            width: 200,
+                            margin: const EdgeInsets.only(right: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              border: Border.all(
+                                color: AppTheme.gemGreen,
+                                width: 2,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
                               children: [
-                                Icon(Icons.add_photo_alternate,
-                                    size: 64, color: Colors.white70),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Tap to select image or video',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 16,
+                                Expanded(
+                                  child: Stack(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: const BorderRadius.vertical(
+                                          top: Radius.circular(10),
+                                        ),
+                                        child: isImage
+                                            ? Image.file(
+                                                File(media.path),
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                height: double.infinity,
+                                              )
+                                            : Container(
+                                                color: Colors.black,
+                                                child: const Center(
+                                                  child: Icon(
+                                                    Icons.video_library,
+                                                    size: 60,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                              ),
+                                      ),
+                                      Positioned(
+                                        top: 8,
+                                        right: 8,
+                                        child: InkWell(
+                                          onTap: () => _removeMedia(index),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.close,
+                                              size: 20,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Description section
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Column(
+                                    children: [
+                                      InkWell(
+                                        onTap: () => _editMediaDescription(index),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: hasDescription
+                                                ? AppTheme.gemGreen.withOpacity(0.2)
+                                                : Colors.white.withOpacity(0.05),
+                                            border: Border.all(
+                                              color: hasDescription
+                                                  ? AppTheme.gemGreen
+                                                  : Colors.white24,
+                                              width: 1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                hasDescription
+                                                    ? Icons.text_fields
+                                                    : Icons.add_comment,
+                                                size: 14,
+                                                color: hasDescription
+                                                    ? AppTheme.gemGreen
+                                                    : Colors.white70,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Flexible(
+                                                child: Text(
+                                                  hasDescription
+                                                      ? _mediaDescriptions[media.path]!
+                                                      : 'Add description',
+                                                  style: TextStyle(
+                                                    color: hasDescription
+                                                        ? Colors.white
+                                                        : Colors.white54,
+                                                    fontSize: 11,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  // Add Media Button
+                  InkWell(
+                    onTap: _pickMedia,
+                    child: Container(
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        border: Border.all(
+                          color: Colors.white24,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_photo_alternate,
+                              size: 48, color: Colors.white70),
+                          SizedBox(height: 8),
+                          Text(
+                            'Tap to add image or video',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'You can add multiple media files',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ] else ...[
-                  TextFormField(
+                ],
+                // Money Input - Show if money is selected
+                if (_hasMoney) ...[
+                  if (_hasMedia) const SizedBox(height: 24),
+                  LuckyTextFieldWrapper(
                     controller: _moneyAmountController,
-                    style: const TextStyle(color: Colors.white),
+                    labelText: 'Amount (\$)',
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Amount (\$)',
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      prefixIcon: const Icon(Icons.attach_money, color: Colors.white70),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Colors.white24),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Colors.blue),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
-                    ),
+                    prefixIcon: Icons.attach_money,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter an amount';
-                      }
-                      final amount = double.tryParse(value);
-                      if (amount == null || amount <= 0) {
-                        return 'Please enter a valid amount';
+                      if (_hasMoney) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter an amount';
+                        }
+                        final amount = double.tryParse(value);
+                        if (amount == null || amount <= 0) {
+                          return 'Please enter a valid amount';
+                        }
                       }
                       return null;
                     },
@@ -482,15 +740,11 @@ class _StudioScreenState extends State<StudioScreen> {
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
+                    child: LuckyButtonWrapper(
+                      text: 'Configure Stripe Payment',
                       onPressed: _handleStripePayment,
-                      icon: const Icon(Icons.payment),
-                      label: const Text('Configure Stripe Payment'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: AppTheme.gemGreen),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
+                      icon: Icons.payment,
+                      variant: LuckyButtonVariant.outline,
                     ),
                   ),
                 ],
@@ -499,23 +753,9 @@ class _StudioScreenState extends State<StudioScreen> {
                 // Create Button
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: LuckyButtonWrapper(
+                    text: 'Create Chest',
                     onPressed: _createChest,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.gemGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Create Chest',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -526,17 +766,15 @@ class _StudioScreenState extends State<StudioScreen> {
     );
   }
 
-  Widget _buildContentTypeOption(
-    ChestContentType type,
+  Widget _buildContentTypeToggle(
     String label,
     IconData icon,
+    bool isSelected,
+    ValueChanged<bool> onChanged,
   ) {
-    final isSelected = _contentType == type;
     return InkWell(
       onTap: () {
-        setState(() {
-          _contentType = type;
-        });
+        onChanged(!isSelected);
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -560,6 +798,12 @@ class _StudioScreenState extends State<StudioScreen> {
                 color: isSelected ? Colors.white : Colors.white70,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
+            ),
+            const SizedBox(height: 4),
+            Icon(
+              isSelected ? Icons.check_circle : Icons.circle_outlined,
+              color: isSelected ? AppTheme.gemGreen : Colors.white54,
+              size: 20,
             ),
           ],
         ),
@@ -646,9 +890,8 @@ class _StudioScreenState extends State<StudioScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.remove, size: 18),
-                  color: quantity > 0 ? Colors.white : Colors.white54,
+                LuckyIconButtonWrapper(
+                  icon: Icons.remove,
                   onPressed: quantity > 0
                       ? () {
                           setState(() {
@@ -661,11 +904,6 @@ class _StudioScreenState extends State<StudioScreen> {
                           });
                         }
                       : null,
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
                 ),
                 Container(
                   width: 50,
@@ -680,9 +918,8 @@ class _StudioScreenState extends State<StudioScreen> {
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add, size: 18),
-                  color: quantity < maxQuantity ? Colors.white : Colors.white54,
+                LuckyIconButtonWrapper(
+                  icon: Icons.add,
                   onPressed: quantity < maxQuantity
                       ? () {
                           setState(() {
@@ -690,11 +927,6 @@ class _StudioScreenState extends State<StudioScreen> {
                           });
                         }
                       : null,
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
                 ),
               ],
             ),

@@ -1,9 +1,11 @@
 import 'dart:convert';
 import '../../profile/models/inventory_item.dart';
+import '../services/chest_reward_service.dart';
 
 enum ChestContentType {
   media,
   money,
+  both, // Both media and money
 }
 
 class Chest {
@@ -14,9 +16,11 @@ class Chest {
   final Map<ItemType, int> requiredItems; // Map of item type to quantity
   final int requiredLevel;
   final ChestContentType contentType;
-  final String? mediaPath; // Path to image/video file
+  final List<String>? mediaPaths; // List of paths to image/video files
+  final Map<String, String>? mediaDescriptions; // Map of media path to description text
   final double? moneyAmount; // Amount in dollars for money type
   final DateTime createdAt;
+  final Map<ItemType, int> rewards; // Rewards that will be given when opening
 
   Chest({
     required this.id,
@@ -26,9 +30,11 @@ class Chest {
     required this.requiredItems,
     required this.requiredLevel,
     required this.contentType,
-    this.mediaPath,
+    this.mediaPaths,
+    this.mediaDescriptions,
     this.moneyAmount,
     required this.createdAt,
+    required this.rewards,
   });
 
   Map<String, dynamic> toJson() {
@@ -40,9 +46,11 @@ class Chest {
       'requiredItems': requiredItems.map((key, value) => MapEntry(key.name, value)),
       'requiredLevel': requiredLevel,
       'contentType': contentType.name,
-      'mediaPath': mediaPath,
+      'mediaPaths': mediaPaths,
+      'mediaDescriptions': mediaDescriptions,
       'moneyAmount': moneyAmount,
       'createdAt': createdAt.toIso8601String(),
+      'rewards': rewards.map((key, value) => MapEntry(key.name, value)),
     };
   }
 
@@ -69,6 +77,21 @@ class Chest {
         }
       }
     }
+
+    final rewardsMap = <ItemType, int>{};
+    if (json['rewards'] != null && json['rewards'] is Map) {
+      (json['rewards'] as Map).forEach((key, value) {
+        final itemType = ItemType.values.firstWhere(
+          (item) => item.name == key,
+          orElse: () => ItemType.coin,
+        );
+        rewardsMap[itemType] = value as int;
+      });
+    } else {
+      // Generate rewards for backward compatibility with old chests
+      final chestLevel = json['requiredLevel'] as int;
+      rewardsMap.addAll(ChestRewardService.generateRewards(chestLevel));
+    }
     
     return Chest(
       id: json['id'] as String,
@@ -80,9 +103,17 @@ class Chest {
       contentType: ChestContentType.values.firstWhere(
         (e) => e.name == json['contentType'],
       ),
-      mediaPath: json['mediaPath'] as String?,
+      mediaPaths: json['mediaPaths'] != null 
+          ? List<String>.from(json['mediaPaths'] as List)
+          : (json['mediaPath'] != null 
+              ? [json['mediaPath'] as String] 
+              : null), // Backward compatibility
+      mediaDescriptions: json['mediaDescriptions'] != null
+          ? Map<String, String>.from(json['mediaDescriptions'] as Map)
+          : null,
       moneyAmount: json['moneyAmount'] as double?,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      rewards: rewardsMap,
     );
   }
 

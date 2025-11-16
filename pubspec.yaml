@@ -17,6 +17,8 @@ dependencies:
   flutter_stripe: ^11.1.0
   uuid: ^4.3.3
   path_provider: ^2.1.2
+  share_plus: ^10.1.2
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
